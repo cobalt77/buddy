@@ -119,12 +119,12 @@ std::tuple<buddy::File::Result, GpgME::VerificationResult> buddy::File::checkSig
 
     if (result != Success)
     {
-        return {result, {}};
+        return std::make_tuple(result, GpgME::VerificationResult());
     }
 
     std::unique_ptr<QGpgME::VerifyDetachedJob> job{QGpgME::openpgp()->verifyDetachedJob()};
     auto signingResult = job->exec(signatures.values().join(), signableData);
-    return {Success, signingResult};
+    return std::make_tuple(Success, signingResult);
 }
 
 buddy::File::Result buddy::File::clearAllSignatures()
