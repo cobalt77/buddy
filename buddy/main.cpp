@@ -225,6 +225,14 @@ int clearAllSignatures(const QStringList& args)
     return 1;
 }
 
+void printUsage()
+{
+    qDebug() << "buddy [-s|--sign] [file] [key]         Add a signature to a file";
+    qDebug() << "buddy [-c|--check] [file]              List signatures in a file and verify integrity";
+    qDebug() << "buddy [-r|--remove] [file] [key]       Remove a signature from a file with specified key";
+    qDebug() << "buddy --clear-all-signatures [file]    Remove all signatures from a file";
+}
+
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
@@ -232,6 +240,7 @@ int main(int argc, char *argv[])
     QStringList args = a.arguments();
     if (args.count() < 2)
     {
+        printUsage();
         return 1;
     }
 
@@ -248,7 +257,7 @@ int main(int argc, char *argv[])
 
     if (!functions.contains(args[1]))
     {
-        qDebug() << "Usage";
+        printUsage();
         return 1;
     }
 
