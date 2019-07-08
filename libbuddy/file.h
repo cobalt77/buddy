@@ -22,10 +22,8 @@ public:
         KeyCannotSign,
         MalformedFile,
         NoSignaturesFound,
-        VerificationFailed,
         CouldNotWriteFile,
         BinaryIsNot64Bit,
-        OperationNotYetSupported,
         KeyIdAmbiguous,
         DuplicateSignature
     };
