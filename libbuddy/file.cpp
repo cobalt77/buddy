@@ -144,7 +144,7 @@ std::tuple<buddy::File::Result, QList<QByteArray>> buddy::File::readSignatures(c
         return std::make_tuple(Success, signatures);
     }
 
-    // No .signature section found
+    // No .signatures section found
     return std::make_tuple(NoSignaturesFound, QList<QByteArray>());
 }
 
@@ -156,7 +156,7 @@ std::tuple<buddy::File::Result, QByteArray> buddy::File::readSignableData(const 
 
     const auto* sectionHeaderList = reinterpret_cast<const Elf64_Shdr*>(data + header->e_shoff);
 
-    // Find .signature section
+    // Find .signatures section
     for (uint16_t i = 0; i < header->e_shnum; ++i)
     {
         Elf64_Shdr sh = sectionHeaderList[i];
