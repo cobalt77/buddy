@@ -53,8 +53,6 @@ int sign(const QStringList& args)
         qDebug() << "Error: Duplicate signature";
         break;
     case buddy::File::NoSignaturesFound:
-    case buddy::File::VerificationFailed:
-    case buddy::File::OperationNotYetSupported:
     case buddy::File::KeyIdAmbiguous:
         qDebug() << "Error: (unknown error)";
     }
@@ -103,10 +101,8 @@ int check(const QStringList& args)
     case buddy::File::KeyNotFound:
     case buddy::File::KeyCannotSign:
     case buddy::File::CouldNotWriteFile:
-    case buddy::File::VerificationFailed:
     case buddy::File::KeyIdAmbiguous:
     case buddy::File::DuplicateSignature:
-    case buddy::File::OperationNotYetSupported:
         qDebug() << "Error: (unknown error)";
     }
 
@@ -165,9 +161,7 @@ int remove(const QStringList& args)
         break;
     case buddy::File::NoSignaturesFound:
     case buddy::File::KeyCannotSign:
-    case buddy::File::VerificationFailed:
     case buddy::File::DuplicateSignature:
-    case buddy::File::OperationNotYetSupported:
         qDebug() << "Error: (unknown error)";
     }
 
@@ -216,9 +210,7 @@ int clearAllSignatures(const QStringList& args)
     case buddy::File::KeyNotFound:
     case buddy::File::KeyIdAmbiguous:
     case buddy::File::KeyCannotSign:
-    case buddy::File::VerificationFailed:
     case buddy::File::DuplicateSignature:
-    case buddy::File::OperationNotYetSupported:
         qDebug() << "Error: (unknown error)";
     }
 
