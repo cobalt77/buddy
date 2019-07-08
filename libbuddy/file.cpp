@@ -7,6 +7,24 @@
 #include <QGpgME/SignJob>
 #include <gpgme++/keylistresult.h>
 
+void buddy::detail::key_type::lookupLongKey()
+{
+    auto* keyListJob = QGpgME::openpgp()->keyListJob();
+    std::vector<GpgME::Key> keys;
+    auto keyListResult = keyListJob->exec({key}, false, keys);
+    if (keys.empty())
+    {
+        qDebug() << "Tried to look up long key from" << key << "but no matching key was found";
+        return;
+    }
+    if (keys.size() > 1)
+    {
+        qDebug() << "Tried to look up long key from" << key << "but multiple keys were found (results ambiguous)";
+        return;
+    }
+    key = QString::fromLocal8Bit(keys.front().primaryFingerprint()).toUpper();
+}
+
 buddy::File::File(const QString& filePath)
     : m_file(filePath)
 {
@@ -31,7 +49,7 @@ std::tuple<buddy::File::Result, GpgME::SigningResult> buddy::File::sign(const QS
     const char* data = fileData.data();
     const auto* header = reinterpret_cast<const Elf64_Ehdr*>(fileData.data());
 
-    QList<QByteArray> signatures;
+    signature_container_t signatures;
     std::tie(result, signatures) = readSignatures(data, header);
     bool isUpdating = (result == Success);
 
@@ -54,22 +72,20 @@ std::tuple<buddy::File::Result, GpgME::SigningResult> buddy::File::sign(const QS
     QByteArray signature;
 
     auto signingResult = signJob->exec({key}, signableData, GpgME::SignatureMode::Detached, signature);
-    for (const auto& s : signatures)
+    auto fingerprint = detail::key_type(signingResult.createdSignatures().front().fingerprint());
+    if (signatures.contains(fingerprint))
     {
-        if (keyIdsEqual(keyIdFromSignature(s), keyId.toUpper()))
-        {
-            return std::make_tuple(DuplicateSignature, GpgME::SigningResult());
-        }
+        return std::make_tuple(DuplicateSignature, GpgME::SigningResult());
     }
-    signatures << signature;
+    signatures.insert(fingerprint, signature);
 
     return std::make_tuple(writeSignatures(signatures, isUpdating), signingResult);
 }
 
-std::tuple<buddy::File::Result, QString> buddy::File::removeSignature(const QString &keyId)
+std::tuple<buddy::File::Result, QString> buddy::File::removeSignature(const QString& keyId)
 {
     Result result;
-    QList<QByteArray> signatures;
+    signature_container_t signatures;
     QByteArray signableData;
     std::tie(result, signatures, signableData) = readSignaturesAndSignableData();
     if (result != Success)
@@ -77,24 +93,27 @@ std::tuple<buddy::File::Result, QString> buddy::File::removeSignature(const QStr
         return std::make_tuple(result, QString());
     }
 
-    for (int i = 0; i < signatures.size(); ++i)
+    detail::key_type maybeLongKey(keyId);
+    if (!maybeLongKey.is_long_key)
     {
-        auto signature = signatures[i];
-        auto longKeyId = keyIdFromSignature(signature);
-        if (keyIdsEqual(longKeyId, keyId))
-        {
-            signatures.removeAt(i);
-            return std::make_tuple(writeSignatures(signatures, true), longKeyId);
-        }
+        maybeLongKey.lookupLongKey();
     }
 
-    return std::make_tuple(KeyNotFound, QString());
+    auto i = signatures.find(maybeLongKey);
+    if (i == signatures.end())
+    {
+        return std::make_tuple(KeyNotFound, QString());
+    }
+
+    auto definitelyLongKey = i.key();
+    signatures.remove(definitelyLongKey);
+    return std::make_tuple(writeSignatures(signatures, true), definitelyLongKey.key);
 }
 
 std::tuple<buddy::File::Result, GpgME::VerificationResult> buddy::File::checkSignatures()
 {
     Result result;
-    QList<QByteArray> signatures;
+    signature_container_t signatures;
     QByteArray signableData;
     std::tie(result, signatures, signableData) = readSignaturesAndSignableData();
 
@@ -104,7 +123,7 @@ std::tuple<buddy::File::Result, GpgME::VerificationResult> buddy::File::checkSig
     }
 
     std::unique_ptr<QGpgME::VerifyDetachedJob> job{QGpgME::openpgp()->verifyDetachedJob()};
-    auto signingResult = job->exec(signatures.join(), signableData);
+    auto signingResult = job->exec(signatures.values().join(), signableData);
     return {Success, signingResult};
 }
 
@@ -120,7 +139,7 @@ buddy::File::Result buddy::File::clearAllSignatures()
     return writeSignatures({}, true);
 }
 
-std::tuple<buddy::File::Result, QList<QByteArray>> buddy::File::readSignatures(const char* data, const Elf64_Ehdr* header)
+std::tuple<buddy::File::Result, buddy::File::signature_container_t> buddy::File::readSignatures(const char* data, const Elf64_Ehdr* header)
 {
     const auto* sectionHeaderList = reinterpret_cast<const Elf64_Shdr*>(data + header->e_shoff);
     const auto* sectionHeaderNameTable = &sectionHeaderList[header->e_shstrndx];
@@ -138,14 +157,14 @@ std::tuple<buddy::File::Result, QList<QByteArray>> buddy::File::readSignatures(c
         auto byteArray = QByteArray::fromRawData(shData, static_cast<int>(sh.sh_size));
         QDataStream stream(byteArray);
         stream.setVersion(QDataStream::Qt_5_6);
-        QList<QByteArray> signatures;
+        signature_container_t signatures;
         stream >> signatures;
 
         return std::make_tuple(Success, signatures);
     }
 
     // No .signatures section found
-    return std::make_tuple(NoSignaturesFound, QList<QByteArray>());
+    return std::make_tuple(NoSignaturesFound, signature_container_t());
 }
 
 std::tuple<buddy::File::Result, QByteArray> buddy::File::readSignableData(const char* data, const Elf64_Ehdr* header)
@@ -171,7 +190,7 @@ std::tuple<buddy::File::Result, QByteArray> buddy::File::readSignableData(const 
     return std::make_tuple(signableData.isEmpty() ? MalformedFile : Success, signableData);
 }
 
-std::tuple<buddy::File::Result, QList<QByteArray>, QByteArray> buddy::File::readSignaturesAndSignableData()
+std::tuple<buddy::File::Result, buddy::File::signature_container_t, QByteArray> buddy::File::readSignaturesAndSignableData()
 {
     Result result;
 
@@ -180,7 +199,7 @@ std::tuple<buddy::File::Result, QList<QByteArray>, QByteArray> buddy::File::read
 
     if (result != Success)
     {
-        return std::make_tuple(result, QList<QByteArray>(), QByteArray());
+        return std::make_tuple(result, signature_container_t(), QByteArray());
     }
 
     const char* data = fileData.data();
@@ -191,15 +210,15 @@ std::tuple<buddy::File::Result, QList<QByteArray>, QByteArray> buddy::File::read
 
     if (result != Success)
     {
-        return std::make_tuple(result, QList<QByteArray>(), QByteArray());
+        return std::make_tuple(result, signature_container_t(), QByteArray());
     }
 
-    QList<QByteArray> signatures;
+    signature_container_t signatures;
     std::tie(result, signatures) = readSignatures(data, header);
 
     if (result != Success)
     {
-        return std::make_tuple(result, QList<QByteArray>(), QByteArray());
+        return std::make_tuple(result, signature_container_t(), QByteArray());
     }
 
     return std::make_tuple(Success, signatures, signableData);
@@ -265,20 +284,7 @@ std::tuple<buddy::File::Result, QByteArray> buddy::File::readFile()
     return std::make_tuple(Success, fileData);
 }
 
-QString buddy::File::keyIdFromSignature(const QByteArray &signature)
-{
-    // Extract the 160-bit fingerprint from the signature
-    return signature.mid(12, 20).toHex().toUpper();
-}
-
-bool buddy::File::keyIdsEqual(const QString &a, const QString &b)
-{
-    return a.toUpper() == b.toUpper()
-           || a.toUpper().endsWith(b.toUpper())
-           || b.toUpper().endsWith(a.toUpper());
-}
-
-buddy::File::Result buddy::File::writeSignatures(const QList<QByteArray> &signatures, bool isUpdating)
+buddy::File::Result buddy::File::writeSignatures(const signature_container_t& signatures, bool isUpdating)
 {
     if (signatures.isEmpty())
     {
