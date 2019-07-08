@@ -156,7 +156,6 @@ std::tuple<buddy::File::Result, QByteArray> buddy::File::readSignableData(const 
 
     const auto* sectionHeaderList = reinterpret_cast<const Elf64_Shdr*>(data + header->e_shoff);
 
-    // Find .signatures section
     for (uint16_t i = 0; i < header->e_shnum; ++i)
     {
         Elf64_Shdr sh = sectionHeaderList[i];
