@@ -178,10 +178,10 @@ std::tuple<buddy::File::Result, QByteArray> buddy::File::readSignableData(const 
     for (uint16_t i = 0; i < header->e_shnum; ++i)
     {
         Elf64_Shdr sh = sectionHeaderList[i];
-        if ((sh.sh_flags & SHF_ALLOC) == 0)
+        if ((sh.sh_flags & SHF_ALLOC) == 0 || (sh.sh_type & SHT_NOBITS) == SHT_NOBITS)
         {
             // Ignore non-allocated sections
-            // These include .comment, .debug_*, .signatures, .symtab, .strtab, .shstrtab
+            // These include .comment, .debug_*, .signatures, .symtab, .strtab, .shstrtab, .bss
             continue;
         }
         stream << QByteArray::fromRawData(data + sh.sh_offset, static_cast<int>(sh.sh_size));
